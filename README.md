@@ -1,56 +1,591 @@
-# Welcome to your Expo app 👋
+# Sparo App (React Native Frontend)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplikasi Sparo ini dibangun menggunakan framework **React Native** (dengan Expo) untuk keperluan frontend. Struktur aplikasi sudah digenerate dan siap untuk dikembangkan lebih lanjut.
 
-## Get started
+## Struktur Direktori Utama
 
-1. Install dependencies
+- `assets/` - Berisi file gambar, font, dan aset statis lainnya.
+- `app/` atau `src/` - (Bisa Anda buat) untuk menaruh komponen, screen, dan navigasi.
+- `App.js` - Titik masuk (entry point) utama aplikasi React Native.
+- `app.json` - Konfigurasi proyek Expo dan React Native.
 
-   ```bash
-   npm install
-   ```
+---
 
-2. Start the app
+## 📝 ERP Vibe Code
 
-   ```bash
-   npx expo start
-   ```
+> Silakan tempel / tulis kode atau catatan terkait "ERP Vibe" Anda di bagian bawah ini.
 
-In the output, you'll find options to open the app in a
+```javascript
+ERP PROMPT SPARO
+Project Name
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+SPARO – Smart Sparring Matchmaking Platform
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+Project Overview
 
-## Get a fresh project
+SPARO adalah aplikasi mobile berbasis Android dan iOS yang berfungsi untuk mempertemukan pemain olahraga dengan lawan sparing yang memiliki kemampuan setara menggunakan sistem ELO Rating, statistik pertandingan, jadwal bermain, lokasi, sportsmanship score, trust score, dan AI matchmaking.
 
-When you're ready, run:
+Aplikasi ini memungkinkan pengguna mencari lawan olahraga secara otomatis tanpa admin, melakukan challenge pertandingan, memvalidasi hasil pertandingan, memperbarui rating secara otomatis, serta membangun komunitas olahraga yang kompetitif dan adil.
 
-```bash
-npm run reset-project
+Target Platform
+Mobile Android
+Mobile iOS
+
+Framework:
+
+React Native
+Expo
+
+Backend:
+
+FastAPI (Python)
+
+Database:
+
+MySQL
+
+Authentication:
+
+Firebase Authentication
+
+Maps:
+
+Google Maps API
+
+AI Engine:
+
+Python
+TensorFlow
+Scikit Learn
+
+Storage:
+
+Firebase Storage
+
+Notification:
+
+Firebase Cloud Messaging
+Supported Sports
+Badminton
+Futsal
+Basket
+Voli
+Tennis
+Tennis Meja
+Mini Soccer
+Padel
+Catur
+User Role
+1. Player/User
+
+Dapat:
+
+Registrasi
+Login
+Melengkapi profil
+Memilih olahraga
+Mencari lawan
+Membuat challenge
+Mengikuti challenge
+Menginput hasil pertandingan
+Melihat statistik
+Melihat ranking
+Mengikuti turnamen
+Membuat turnamen
+
+Tidak ada admin operasional.
+
+Semua proses berjalan otomatis.
+
+Authentication Module
+Register
+
+Field:
+
+Full Name
+Email
+Phone Number
+Password
+Confirm Password
+
+Validation:
+
+Email Verification
+OTP Verification
+Login
+
+Field:
+
+Email
+Password
+
+Support:
+
+Google Login
+Apple Login
+Profile Module
+
+Field:
+
+Profile Picture
+Full Name
+Username
+Gender
+Date of Birth
+Height
+Weight
+City
+Province
+
+Sports Information:
+
+Primary Sport
+Secondary Sport
+
+Availability:
+
+Available Days
+Available Time
+Sports Profile Module
+
+Setiap olahraga memiliki:
+
+Rating
+Level
+Match Count
+Win Count
+Lose Count
+Draw Count
+Win Rate
+
+Contoh:
+
+Badminton:
+
+Rating: 1000
+
+Level: Beginner
+
+Dashboard
+
+Menampilkan:
+
+Profile Summary
+Profile Picture
+Name
+Rating
+Level
+Statistics
+Total Match
+Win
+Lose
+Draw
+Win Rate
+Recommended Opponent
+
+AI Match Recommendation
+
+Upcoming Match
+
+Menampilkan jadwal pertandingan berikutnya.
+
+ELO Rating System
+
+Initial Rating:
+
+1000
+
+Formula:
+
+Rnew = Rold + K(S-E)
+
+Expected Score:
+
+E = 1 / (1 + 10^((OpponentRating - PlayerRating)/400))
+
+K Factor:
+
+Placement Match = 40
+
+Regular Player = 32
+
+Experienced Player = 24
+
+Elite Player = 16
+
+Placement Match
+
+User baru wajib menyelesaikan:
+
+5 pertandingan
+
+Status:
+
+Placement Match 1/5
+
+Placement Match 2/5
+
+Placement Match 3/5
+
+Placement Match 4/5
+
+Placement Match 5/5
+
+Setelah selesai:
+
+Masuk leaderboard resmi.
+
+Find Opponent Module
+
+Filter:
+
+Sport
+Rating
+Distance
+Gender
+Age
+Day
+Time
+
+Display:
+
+Profile Picture
+Name
+Rating
+Level
+Distance
+Sportsmanship Score
+
+Button:
+
+View Profile
+Challenge
+Challenge Module
+
+User dapat membuat challenge.
+
+Field:
+
+Opponent
+Date
+Time
+Location
+Sport
+
+Status:
+
+Pending
+Accepted
+Rejected
+Completed
+Match Verification System
+
+Tidak menggunakan admin.
+
+Step 1
+
+Kedua pemain melakukan:
+
+GPS Check In
+
+Valid jika berada dalam radius lokasi pertandingan.
+
+Step 2
+
+Setelah pertandingan:
+
+Pemain A menginput:
+
+Score
+Winner
+Step 3
+
+Pemain B melakukan konfirmasi.
+
+Pilihan:
+
+Agree
+Disagree
+Step 4
+
+Jika hasil sama:
+
+Status:
+
+Verified
+
+Rating otomatis diperbarui.
+
+Step 5
+
+Jika hasil berbeda:
+
+Status:
+
+Conflict Detected
+
+Sistem meminta:
+
+Upload Scoreboard Photo
+
+OCR Verification
+
+AI membaca hasil skor menggunakan OCR.
+
+Jika hasil valid:
+
+Status:
+
+Verified
+
+Jika tidak valid:
+
+Status:
+
+Rejected
+
+Trust Score System
+
+Nilai awal:
+
+100
+
+Rule:
+
+Match Verified:
+
++1
+
+Conflict Result:
+
+-3
+
+No Show:
+
+-5
+
+Fraud Detected:
+
+-10
+
+Range:
+
+0-100
+
+Sportsmanship Score
+
+Dinilai setelah pertandingan.
+
+Kategori:
+
+Fair Play
+Attitude
+Communication
+Punctuality
+
+Rating:
+
+1-5 Stars
+
+AI Match Recommendation
+
+AI mempertimbangkan:
+
+Rating
+Win Rate
+Sportsmanship
+Trust Score
+Location
+Availability
+
+Output:
+
+Match Compatibility Score
+
+Contoh:
+
+95% Compatible
+
+Anti Fraud System
+
+Deteksi:
+
+Rating Farming
+Fake Match
+Multi Account
+Repeated Opponent Abuse
+
+Rule:
+
+Maksimal 3 pertandingan dengan lawan yang sama dalam 7 hari untuk perhitungan rating.
+
+Leaderboard Module
+
+Kategori:
+
+City
+Province
+National
+
+Ranking berdasarkan:
+
+Rating
+Win Rate
+Match Count
+Tournament Module
+
+User dapat membuat turnamen.
+
+Field:
+
+Tournament Name
+Sport
+Date
+Location
+Maximum Participant
+
+Sistem otomatis membuat:
+
+Bracket
+Match Schedule
+Ranking
+Community Module
+
+Fitur:
+
+Posting
+Comment
+Like
+Share
+Find Training Partner
+Notification Module
+
+Push Notification:
+
+Challenge Received
+Challenge Accepted
+Match Reminder
+Result Verified
+Rating Updated
+Database Structure
+
+Users
+
+id
+fullname
+username
+email
+phone
+password
+created_at
+
+Profiles
+
+id
+user_id
+photo
+gender
+birthdate
+height
+weight
+city
+province
+
+Sports
+
+id
+sport_name
+
+Ratings
+
+id
+user_id
+sport_id
+rating
+level
+
+Matches
+
+id
+player1_id
+player2_id
+winner_id
+score
+status
+
+Challenges
+
+id
+sender_id
+receiver_id
+date
+time
+location
+
+TrustScores
+
+id
+user_id
+score
+
+Sportsmanship
+
+id
+user_id
+score
+
+Tournaments
+
+id
+name
+sport_id
+date
+
+Posts
+
+id
+user_id
+content
+
+Comments
+
+id
+post_id
+user_id
+comment
+
+Notifications
+
+id
+user_id
+title
+body
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+---
 
-### Other setup steps
+## Menjalankan Aplikasi
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Untuk menjalankan aplikasi ini secara lokal pada mode development:
 
-## Learn more
+1. Pastikan Anda berada di direktori proyek:
 
-To learn more about developing your project with Expo, look at the following resources:
+   ```bash
+   cd c:\xampp82\htdocs\sparo
+   ```
+2. Jalankan perintah berikut:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+   ```bash
+   npm start
+   ```
 
-## Join the community
+   Atau untuk langsung membuka di Android/Web:
+   ```bash
+   npm run android
+   npm run web
+   ```
 
-Join our community of developers creating universal apps.
+## Info Tambahan
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Pastikan Anda sudah menginstal aplikasi **Expo Go** di HP Anda (Android/iOS) jika ingin melihat hasil render aplikasi secara langsung dengan memindai QR Code.
+- Untuk menginstall dependency tambahan, Anda bisa menggunakan `npm install <nama-paket>`.
