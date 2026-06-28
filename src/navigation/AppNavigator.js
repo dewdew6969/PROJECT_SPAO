@@ -5,6 +5,7 @@ import MainTabNavigator from './MainTabNavigator';
 import SplashScreen from '../screens/auth/SplashScreen';
 
 import CreateChallengeScreen from '../screens/main/CreateChallengeScreen';
+import CreateTournamentScreen from '../screens/main/CreateTournamentScreen';
 import OpponentProfileScreen from '../screens/main/OpponentProfileScreen';
 import ChatScreen from '../screens/main/ChatScreen';
 import VenueMapScreen from '../screens/main/VenueMapScreen';
@@ -20,6 +21,7 @@ export default function AppNavigator() {
       <Stack.Screen name="Auth" component={AuthNavigator} />
       <Stack.Screen name="Main" component={MainTabNavigator} />
       <Stack.Screen name="CreateChallenge" component={CreateChallengeScreen} />
+      <Stack.Screen name="CreateTournament" component={CreateTournamentScreen} />
       <Stack.Screen name="OpponentProfile" component={OpponentProfileScreen} />
       <Stack.Screen name="ChatList" component={ChatListScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />

@@ -1,16 +1,33 @@
 import React, { useState, useContext } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, StatusBar } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, StatusBar, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import useAppStore from '../../store/useAppStore';
 
+const getAvatarUrl = (str) => {
+  if (!str || str === "null") return 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+  
+  if (str.includes('gravatar.com') || str.startsWith('http://') || str.startsWith('https://') || str.startsWith('file://') || str.startsWith('content://')) {
+    // Cache buster to prevent stale images after upload (only for non-gravatar)
+    if (str.startsWith('http') && !str.includes('gravatar.com')) {
+       return `${str}?t=${Date.now()}`;
+    }
+    return str;
+  }
+  
+  const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+  const cleanPath = str.startsWith('/') ? str : `/${str}`;
+  return `${API_URL}${cleanPath}?t=${Date.now()}`;
+};
+
 export default function CreateChallengeScreen({ navigation, route }) {
   const { profile, t, language, selectedOpponent } = useAppStore();
   
-  // Prioritize Zustand's selectedOpponent globally
-  const opponent = selectedOpponent || route.params?.opponent || {
+  // Prioritize route params (fresh click) over Zustand's global state
+  const opponent = route.params?.opponent || selectedOpponent || {
     name: 'Marcus Vane',
     elo: 1520,
     level: 'EXPERT',
@@ -31,11 +48,15 @@ export default function CreateChallengeScreen({ navigation, route }) {
   const [isCompetitive, setIsCompetitive] = useState(true);
   const [isSending, setIsSending] = useState(false);
 
-  React.useEffect(() => {
-    if (route.params?.newSelectedVenue) {
-      setActiveVenue(route.params.newSelectedVenue);
-    }
-  }, [route.params?.newSelectedVenue]);
+  useFocusEffect(
+    React.useCallback(() => {
+      const tempVenue = useAppStore.getState().tempVenue;
+      if (tempVenue) {
+        setActiveVenue(tempVenue);
+        useAppStore.getState().setTempVenue(null);
+      }
+    }, [])
+  );
 
   const handleSendChallenge = async () => {
     if (!activeVenue) {
@@ -84,9 +105,14 @@ export default function CreateChallengeScreen({ navigation, route }) {
     if (Platform.OS === 'android') {
       setShowPicker(false);
     }
+    // Note: On iOS, we keep it open until 'Done' is pressed
     if (selectedDate) {
       if (activePickerType === 'start') {
         setMatchDate(selectedDate);
+        // Ensure end date is always after start date
+        if (selectedDate >= matchEndDate) {
+          setMatchEndDate(new Date(selectedDate.getTime() + 2 * 60 * 60 * 1000));
+        }
       } else {
         setMatchEndDate(selectedDate);
       }
@@ -94,6 +120,10 @@ export default function CreateChallengeScreen({ navigation, route }) {
   };
 
   const showMode = (currentMode, type = 'start') => {
+    if (Platform.OS === 'web') {
+      alert(t('feature_unavailable') + ': Date & Time picker requires a mobile device (Android/iOS). For testing on web, a default time will be used.');
+      return;
+    }
     setActivePickerType(type);
     setPickerMode(currentMode);
     setShowPicker(true);
@@ -120,12 +150,12 @@ export default function CreateChallengeScreen({ navigation, route }) {
           <View style={{ width: 24 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           
           {/* Opponent Card */}
           <View style={styles.opponentCard}>
             <View style={styles.avatarContainer}>
-              <Image source={{ uri: opponent.avatar }} style={styles.avatar} />
+              <Image source={{ uri: getAvatarUrl(opponent.avatar) }} style={styles.avatar} />
               {opponent.isPro && (
                 <View style={styles.proBadge}>
                   <Text style={styles.proText}>PRO</Text>
@@ -184,23 +214,45 @@ export default function CreateChallengeScreen({ navigation, route }) {
               </TouchableOpacity>
             </View>
 
-            {showPicker && (
+            {showPicker && Platform.OS === 'android' && (
               <DateTimePicker
                 value={activePickerType === 'start' ? matchDate : matchEndDate}
                 mode={pickerMode}
                 is24Hour={true}
                 display="default"
                 onChange={onChangeDateTime}
-                minimumDate={activePickerType === 'end' ? matchDate : new Date()}
+                minimumDate={activePickerType === 'end' ? matchDate : new Date(new Date().setHours(0,0,0,0))}
               />
             )}
+
+            <Modal visible={showPicker && Platform.OS === 'ios'} transparent={true} animationType="slide">
+              <View style={styles.iosPickerOverlay}>
+                <View style={styles.iosPickerContainer}>
+                  <View style={styles.iosPickerHeader}>
+                    <TouchableOpacity onPress={() => setShowPicker(false)}>
+                      <Text style={styles.iosPickerDone}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <DateTimePicker
+                    value={activePickerType === 'start' ? matchDate : matchEndDate}
+                    mode={pickerMode}
+                    is24Hour={true}
+                    display="spinner"
+                    onChange={onChangeDateTime}
+                    minimumDate={activePickerType === 'end' ? matchDate : new Date(new Date().setHours(0,0,0,0))}
+                    textColor="#FFF"
+                    themeVariant="dark"
+                  />
+                </View>
+              </View>
+            </Modal>
           </View>
 
           {/* Select Venue */}
           <View style={styles.section}>
             <View style={styles.venueHeader}>
               <Text style={styles.sectionTitle}>{t('select_venue').toUpperCase()}</Text>
-              <TouchableOpacity style={styles.mapBtn} onPress={() => navigation.navigate('VenueMap')}>
+              <TouchableOpacity style={styles.mapBtn} onPress={() => navigation.navigate('VenueMap', { returnScreen: 'CreateChallenge' })}>
                 <Feather name="map" size={12} color="#D4FF00" style={{ marginRight: 4 }} />
                 <Text style={styles.mapBtnText}>{t('map_view')}</Text>
               </TouchableOpacity>
@@ -217,7 +269,7 @@ export default function CreateChallengeScreen({ navigation, route }) {
                 </View>
               </View>
             ) : (
-              <TouchableOpacity style={styles.emptyVenueCard} onPress={() => navigation.navigate('VenueMap')}>
+              <TouchableOpacity style={styles.emptyVenueCard} onPress={() => navigation.navigate('VenueMap', { returnScreen: 'CreateChallenge' })}>
                 <Feather name="map-pin" size={24} color="#8A95A5" style={{ marginBottom: 10 }} />
                 <Text style={styles.emptyVenueText}>{t('no_venue_selected')}</Text>
                 <Text style={styles.emptyVenueSubtext}>{t('pick_location_desc')}</Text>
@@ -340,5 +392,11 @@ const styles = StyleSheet.create({
   // Footer
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: '#0A0F18', borderTopWidth: 1, borderTopColor: '#1C2433' },
   sendBtn: { backgroundColor: '#D4FF00', paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
-  sendBtnText: { color: '#0F1522', fontSize: 16, fontWeight: '900', letterSpacing: 1 }
+  sendBtnText: { color: '#0F1522', fontSize: 16, fontWeight: '900', letterSpacing: 1 },
+
+  // iOS Picker Styles
+  iosPickerOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0, 0, 0, 0.5)' },
+  iosPickerContainer: { backgroundColor: '#1C2433', paddingBottom: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  iosPickerHeader: { flexDirection: 'row', justifyContent: 'flex-end', padding: 15, borderBottomWidth: 1, borderBottomColor: '#2D3748' },
+  iosPickerDone: { color: '#D4FF00', fontSize: 16, fontWeight: 'bold' }
 });

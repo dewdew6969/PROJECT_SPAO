@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Feather } from '@expo/vector-icons';
 import { Text, AppState } from 'react-native';
 import DashboardScreen from '../screens/main/DashboardScreen';
@@ -19,7 +19,7 @@ const TabBarLabel = ({ route, color }) => {
   );
 };
 
-const Tab = createBottomTabNavigator();
+const Tab = createMaterialTopTabNavigator();
 
 export default function MainTabNavigator() {
   const { t, language, profile } = useAppStore();
@@ -85,9 +85,12 @@ export default function MainTabNavigator() {
   return (
     <Tab.Navigator
       key={language}
+      tabBarPosition="bottom"
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarIcon: ({ color, size }) => {
+        swipeEnabled: true,
+        animationEnabled: true,
+        tabBarIcon: ({ color }) => {
           let iconName;
           if (route.name === 'Home') iconName = 'home';
           else if (route.name === 'Opponent') iconName = 'users';
@@ -95,10 +98,12 @@ export default function MainTabNavigator() {
           else if (route.name === 'Leaderboard') iconName = 'bar-chart-2';
           else if (route.name === 'Profile') iconName = 'user';
           
-          return <Feather name={iconName} size={size} color={color} />;
+          return <Feather name={iconName} size={24} color={color} />;
         },
         tabBarActiveTintColor: '#D4FF00',
         tabBarInactiveTintColor: '#8A95A5',
+        tabBarShowIcon: true,
+        tabBarIndicatorStyle: { height: 2, backgroundColor: '#D4FF00', top: 0 },
         tabBarStyle: {
           backgroundColor: '#0F1522',
           borderTopWidth: 1,
@@ -106,6 +111,7 @@ export default function MainTabNavigator() {
           paddingBottom: Math.max(insets.bottom, 5),
           paddingTop: 5,
           height: 60 + insets.bottom,
+          elevation: 0,
         },
         tabBarLabel: (props) => <TabBarLabel route={route} color={props.color} />
       })}

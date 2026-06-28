@@ -1,5 +1,5 @@
 import React, { useContext, useRef, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, StatusBar, Animated, Modal, Dimensions, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, StatusBar, Animated, Modal, Dimensions, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons } from '@expo/vector-icons';
@@ -10,8 +10,44 @@ const { width } = Dimensions.get('window');
 const CARD_WIDTH = width - 40; // 20 padding left + 20 padding right
 const ITEM_SIZE = CARD_WIDTH + 15; // card width + 15 marginRight
 
+const getAvatarUrl = (str, cacheBuster = null) => {
+  if (!str || str === "null") return 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+  
+  let finalUrl = str;
+  if (str.includes('gravatar.com') || str.startsWith('file://') || str.startsWith('content://')) {
+    finalUrl = str;
+  } else if (str.startsWith('http://') || str.startsWith('https://')) {
+    if (!str.includes('localhost') && !str.includes('127.0.0.1') && !str.includes('10.0.2.2')) {
+      finalUrl = str;
+    } else {
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+      try {
+        const urlObj = new URL(str);
+        finalUrl = `${apiUrl}${urlObj.pathname}${urlObj.search}`;
+      } catch (e) {
+        finalUrl = str.startsWith('/') ? `${apiUrl}${str}` : `${apiUrl}/${str}`;
+      }
+    }
+  } else {
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+    try {
+      const urlObj = new URL(str);
+      finalUrl = `${apiUrl}${urlObj.pathname}${urlObj.search}`;
+    } catch (e) {
+      finalUrl = str.startsWith('/') ? `${apiUrl}${str}` : `${apiUrl}/${str}`;
+    }
+  }
+
+  // Prevent cache issues by appending a timestamp when a new fetch occurs
+  if (cacheBuster && !finalUrl.includes('gravatar.com')) {
+    finalUrl += (finalUrl.includes('?') ? '&' : '?') + 't=' + cacheBuster;
+  }
+  
+  return finalUrl;
+};
+
 export default function DashboardScreen({ navigation }) {
-  const { profile, t, language, setSelectedOpponent } = useAppStore();
+  const { profile, t, language, setSelectedOpponent, chatRooms } = useAppStore();
   const scrollX = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -22,11 +58,16 @@ export default function DashboardScreen({ navigation }) {
   
   const [opponents, setOpponents] = useState([]);
   const [isLoadingOpponents, setIsLoadingOpponents] = useState(true);
+  
+  const [tournaments, setTournaments] = useState([]);
+  const [isLoadingTournaments, setIsLoadingTournaments] = useState(true);
+  
   const [refreshing, setRefreshing] = useState(false);
+  const [dataTimestamp, setDataTimestamp] = useState(Date.now().toString());
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchOpponents().then(() => setRefreshing(false));
+    Promise.all([fetchOpponents(), fetchTournaments()]).then(() => setRefreshing(false));
   }, []);
 
   const fetchOpponents = async () => {
@@ -44,6 +85,7 @@ export default function DashboardScreen({ navigation }) {
          const data = await response.json();
          // Filter diri sendiri
          setOpponents(data.filter(u => u.id !== profile.id));
+         setDataTimestamp(Date.now().toString()); // Update timestamp to bypass image cache
       }
     } catch (err) {
       console.error('Failed to fetch opponents:', err);
@@ -52,9 +94,55 @@ export default function DashboardScreen({ navigation }) {
     }
   };
 
+  const fetchTournaments = async () => {
+    try {
+      const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+      const response = await fetch(`${API_URL}/tournaments/`);
+      if (response.ok) {
+         const data = await response.json();
+         setTournaments(data || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch tournaments:', err);
+    } finally {
+      setIsLoadingTournaments(false);
+    }
+  };
+
+  const handleDeleteTournament = (id, title) => {
+    Alert.alert(
+      t('delete_tournament') || 'Delete Tournament',
+      (t('delete_confirm') || 'Are you sure you want to delete') + ` "${title}"?`,
+      [
+        { text: t('cancel') || 'Cancel', style: 'cancel' },
+        { 
+          text: t('delete') || 'Delete', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+              const res = await fetch(`${API_URL}/tournaments/${id}`, { method: 'DELETE' });
+              if (res.ok) {
+                if (Platform.OS === 'android') {
+                  import('react-native').then(({ ToastAndroid }) => ToastAndroid.show('Tournament deleted', ToastAndroid.SHORT));
+                }
+                fetchTournaments();
+              } else {
+                alert('Failed to delete tournament');
+              }
+            } catch (e) {
+              console.error(e);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   useFocusEffect(
     React.useCallback(() => {
       fetchOpponents();
+      fetchTournaments();
     }, [profile?.latitude, profile?.longitude])
   );
 
@@ -77,6 +165,11 @@ export default function DashboardScreen({ navigation }) {
 
   // Calculate win rate
   const winRate = profile.matches > 0 ? Math.round((profile.wins / profile.matches) * 100) : 0;
+
+  // Check for unread messages
+  const hasUnreadMessages = Object.values(chatRooms || {}).some(roomMessages => 
+    roomMessages.some(msg => msg.sender === 'opponent' && msg.status !== 'read')
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -118,7 +211,7 @@ export default function DashboardScreen({ navigation }) {
                 activeOpacity={0.7}
               >
                 <Feather name="message-square" size={24} color="#8A95A5" />
-                {/* Optional: Add unread badge here later */}
+                {hasUnreadMessages && <View style={styles.unreadBadge} />}
               </TouchableOpacity>
               
               <TouchableOpacity 
@@ -127,20 +220,7 @@ export default function DashboardScreen({ navigation }) {
                 activeOpacity={0.8}
               >
                 <Image 
-                  source={{ 
-                    uri: (() => {
-                      const str = profile?.avatar;
-                      if (!str || str === "null") return 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
-                      if (str.includes('gravatar.com') || str.startsWith('file://') || str.startsWith('content://')) return str;
-                      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
-                      try {
-                        const urlObj = new URL(str);
-                        return `${apiUrl}${urlObj.pathname}${urlObj.search}`;
-                      } catch (e) {
-                        return str.startsWith('/') ? `${apiUrl}${str}` : `${apiUrl}/${str}`;
-                      }
-                    })()
-                  }} 
+                  source={{ uri: getAvatarUrl(profile?.avatar, dataTimestamp) }} 
                   style={styles.avatarImage} 
                 />
               </TouchableOpacity>
@@ -272,7 +352,7 @@ export default function DashboardScreen({ navigation }) {
                       navigation.navigate('OpponentProfile');
                     }}
                   >
-                    <Image source={{ uri: match.avatar || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y' }} style={styles.aiAvatar} />
+                    <Image source={{ uri: getAvatarUrl(match.avatar, dataTimestamp) }} style={styles.aiAvatar} />
                     <View style={styles.aiMatchDetails}>
                       <Text style={styles.aiMatchName}>{match.full_name || match.username}</Text>
                       <View style={styles.aiMatchBadges}>
@@ -317,67 +397,106 @@ export default function DashboardScreen({ navigation }) {
           </Animated.ScrollView>
 
           {/* Upcoming Tournaments */}
-          <Text style={[styles.sectionTitle, { marginTop: 25, marginBottom: 15 }]}>{t('upcoming_tournaments')}</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 25, marginBottom: 15 }}>
+            <Text style={[styles.sectionTitle, { marginTop: 0, marginBottom: 0 }]}>{t('upcoming_tournaments')}</Text>
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#D4FF00', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+              onPress={() => navigation.navigate('CreateTournament')}
+            >
+              <Feather name="plus" size={14} color="#0F1522" />
+              <Text style={{ color: '#0F1522', fontSize: 11, fontWeight: 'bold', marginLeft: 4, letterSpacing: 0.5 }}>CREATE</Text>
+            </TouchableOpacity>
+          </View>
           
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tournamentsScroll}>
-            {[
-              {
-                id: 1,
-                title: 'Sparo National Cup',
-                organizer: 'Sparo Official',
-                date: 'Dec 15 • Jakarta Arena',
-                prize: '$5,000',
-                type: t('official'),
-                bgColor: '#D4FF00',
-                textColor: '#000',
-                icon: 'award'
-              },
-              {
-                id: 2,
-                title: 'Sudirman Futsal League',
-                organizer: 'Sudirman SC (Business)',
-                date: 'Nov 20 • Sudirman SC',
-                prize: 'Member Voucher',
-                type: t('sponsored'),
-                bgColor: '#A0BEFF',
-                textColor: '#000',
-                icon: 'briefcase'
-              },
-              {
-                id: 3,
-                title: 'Jakarta Runners Meetup',
-                organizer: 'IndoRunners (Verified)',
-                date: 'Oct 30 • GBK',
-                prize: 'Medals & Gear',
-                type: t('community'),
-                bgColor: '#FF7676',
-                textColor: '#FFF',
-                icon: 'users'
-              }
-            ].map((tourney) => (
-              <TouchableOpacity key={tourney.id} style={styles.tournamentCard} activeOpacity={0.8}>
-                <LinearGradient 
-                  colors={['#1C2433', '#161C26']} 
-                  style={styles.tournamentImagePlaceholder}
+            {isLoadingTournaments ? (
+              <View style={{ width: CARD_WIDTH, alignItems: 'center', justifyContent: 'center', height: 130 }}>
+                 <Text style={{ color: '#8A95A5' }}>Loading tournaments...</Text>
+              </View>
+            ) : tournaments.length === 0 ? (
+              <View style={{ width: CARD_WIDTH, alignItems: 'center', justifyContent: 'center', height: 130 }}>
+                 <Text style={{ color: '#8A95A5' }}>No upcoming tournaments</Text>
+              </View>
+            ) : tournaments.map((tourney, index) => {
+              const title = tourney.title || tourney.name || 'Sparo Tournament';
+              const organizer = tourney.organizer || 'Sparo Official';
+              
+              let dateStr = 'TBA';
+              try {
+                const d = tourney.date || tourney.start_date;
+                if (d) dateStr = new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+              } catch(e) {}
+
+              const prize = tourney.prize || 'Trophy & Cash';
+              const type = (tourney.type || tourney.category || t('official')).toUpperCase();
+              
+              const sport = tourney.sport || 'Multi-sport';
+              const location = tourney.location || 'Online / TBD';
+              const maxParticipants = tourney.max_participants || 16;
+              
+              // Tema warna dibuat bervariasi otomatis berdasarkan urutan index
+              const colorThemes = [
+                { bgColor: '#D4FF00', textColor: '#000', icon: 'award' },
+                { bgColor: '#A0BEFF', textColor: '#000', icon: 'briefcase' },
+                { bgColor: '#FF7676', textColor: '#FFF', icon: 'users' },
+                { bgColor: '#FF9EAA', textColor: '#000', icon: 'star' }
+              ];
+              const theme = colorThemes[index % colorThemes.length];
+
+              return (
+                <TouchableOpacity 
+                  key={tourney.id || index} 
+                  style={[styles.tournamentCard, { borderColor: theme.bgColor + '40', shadowColor: theme.bgColor }]} 
+                  activeOpacity={0.8}
+                  onLongPress={() => handleDeleteTournament(tourney.id, title)}
                 >
-                  <View style={[styles.openNowBadge, { backgroundColor: tourney.bgColor }]}>
-                    <Text style={[styles.openNowText, { color: tourney.textColor }]}>{tourney.type}</Text>
+                  <LinearGradient 
+                    colors={['#1C2433', '#10151F']} 
+                    style={styles.tournamentImagePlaceholder}
+                  >
+                    <View style={styles.badgesContainer}>
+                      <View style={[styles.openNowBadge, { backgroundColor: theme.bgColor }]}>
+                        <Text style={[styles.openNowText, { color: theme.textColor }]}>{type}</Text>
+                      </View>
+                      <View style={[styles.sportBadge, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
+                        <Text style={styles.sportBadgeText}>{sport.toUpperCase()}</Text>
+                      </View>
+                    </View>
+                    <Feather name={theme.icon} size={48} color="rgba(255,255,255,0.03)" style={{ position: 'absolute' }} />
+                  </LinearGradient>
+                  
+                  <View style={styles.tournamentInfo}>
+                    <Text style={styles.tournamentTitle} numberOfLines={1}>{title}</Text>
+                    <Text style={{ color: '#8A95A5', fontSize: 10, marginTop: 1, marginBottom: 12 }}>{t('by')} <Text style={{color: '#FFF', fontWeight: 'bold'}}>{organizer}</Text></Text>
+                    
+                    <View style={styles.tournamentDetailsGrid}>
+                      <View style={styles.detailItem}>
+                        <Feather name="calendar" size={13} color="#D4FF00" />
+                        <Text style={styles.detailText} numberOfLines={1}>{dateStr}</Text>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <Feather name="map-pin" size={13} color="#FF7676" />
+                        <Text style={styles.detailText} numberOfLines={1}>{location}</Text>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <Feather name="users" size={13} color="#A0BEFF" />
+                        <Text style={styles.detailText} numberOfLines={1}>{maxParticipants} Slots</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.tournamentFooter}>
+                      <View>
+                        <Text style={{ color: '#8A95A5', fontSize: 9, letterSpacing: 0.5, marginBottom: 2 }}>{t('prize')?.toUpperCase()}</Text>
+                        <Text style={styles.tournamentPrize}>{prize}</Text>
+                      </View>
+                      <View style={[styles.registerBtn, { backgroundColor: theme.bgColor }]}>
+                        <Text style={[styles.tournamentRegister, { color: theme.textColor }]}>{t('register')} <Feather name="arrow-right" size={12} /></Text>
+                      </View>
+                    </View>
                   </View>
-                  <Feather name={tourney.icon} size={48} color="rgba(255,255,255,0.05)" />
-                </LinearGradient>
-                <View style={styles.tournamentInfo}>
-                  <Text style={styles.tournamentTitle} numberOfLines={1}>{tourney.title}</Text>
-                  <Text style={styles.tournamentDate}>
-                    <Feather name="calendar" size={12} color="#8A95A5" /> {tourney.date}
-                  </Text>
-                  <Text style={{ color: '#A0BEFF', fontSize: 10, marginTop: 2 }}>{t('by')} {tourney.organizer}</Text>
-                  <View style={styles.tournamentFooter}>
-                    <Text style={styles.tournamentPrize}>{tourney.prize} {t('prize')}</Text>
-                    <Text style={styles.tournamentRegister}>{t('register')} <Feather name="arrow-right" size={12} /></Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
 
           <View style={{ height: 20 }} />
@@ -477,7 +596,19 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#1C2433',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    position: 'relative'
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#FF4B4B',
+    borderWidth: 2,
+    borderColor: '#1C2433'
   },
   avatarImage: { width: 65, height: 65, borderRadius: 32.5, borderWidth: 2, borderColor: '#D4FF00' },
 
@@ -521,16 +652,24 @@ const styles = StyleSheet.create({
 
   // Tournaments
   tournamentsScroll: { marginHorizontal: -20, paddingHorizontal: 20 },
-  tournamentCard: { width: 280, backgroundColor: '#161C26', borderRadius: 18, marginRight: 15, overflow: 'hidden', borderWidth: 1, borderColor: '#2D3748', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5 },
-  tournamentImagePlaceholder: { height: 130, justifyContent: 'center', alignItems: 'center', position: 'relative' },
-  openNowBadge: { position: 'absolute', top: 12, left: 12, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, zIndex: 2 },
-  openNowText: { color: '#FFF', fontSize: 10, fontWeight: 'bold', letterSpacing: 0.5 },
-  tournamentInfo: { padding: 18 },
-  tournamentTitle: { fontSize: 18, fontWeight: '900', color: '#FFF', marginBottom: 6 },
-  tournamentDate: { fontSize: 12, color: '#8A95A5', marginBottom: 14, fontWeight: '600' },
-  tournamentFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 14, borderTopWidth: 1, borderTopColor: '#2D3748' },
-  tournamentPrize: { color: '#D4FF00', fontSize: 14, fontWeight: '800' },
-  tournamentRegister: { color: '#A0BEFF', fontSize: 13, fontWeight: 'bold' },
+  tournamentCard: { width: 300, backgroundColor: '#161C26', borderRadius: 20, marginRight: 15, overflow: 'hidden', borderWidth: 1, elevation: 5 },
+  tournamentImagePlaceholder: { height: 110, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  badgesContainer: { position: 'absolute', top: 12, left: 12, right: 12, flexDirection: 'row', justifyContent: 'space-between' },
+  openNowBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, zIndex: 2 },
+  openNowText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+  sportBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, zIndex: 2, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  sportBadgeText: { color: '#FFF', fontSize: 10, fontWeight: 'bold', letterSpacing: 0.5 },
+  tournamentInfo: { padding: 18, paddingTop: 14 },
+  tournamentTitle: { fontSize: 18, fontWeight: '900', color: '#FFF' },
+  
+  tournamentDetailsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#2D3748' },
+  detailItem: { flexDirection: 'row', alignItems: 'center', width: '46%' },
+  detailText: { color: '#A0BEFF', fontSize: 11, marginLeft: 6, fontWeight: '500' },
+  
+  tournamentFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  tournamentPrize: { color: '#FFF', fontSize: 15, fontWeight: '900' },
+  registerBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 },
+  tournamentRegister: { fontSize: 12, fontWeight: 'bold' },
 
 
 

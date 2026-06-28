@@ -664,6 +664,9 @@ const useAppStore = create((set, get) => ({
   selectedOpponent: null,
   setSelectedOpponent: (opponent) => set({ selectedOpponent: opponent }),
 
+  tempVenue: null,
+  setTempVenue: (venue) => set({ tempVenue: venue }),
+
   // 6. FUNGSI UNTUK MERESET SEMUA STATE SAAT LOGOUT
   logout: () => {
     AsyncStorage.multiRemove(['sparo_token', 'sparo_profile', 'sparo_login_time']).catch(err => console.log(err));

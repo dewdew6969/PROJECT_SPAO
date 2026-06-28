@@ -7,11 +7,47 @@ import * as ScreenCapture from 'expo-screen-capture';
 import useAppStore from '../../store/useAppStore';
 import CustomAlert from '../../components/CustomAlert';
 
+const getAvatarUrl = (str, cacheBuster = null) => {
+  if (!str || str === "null") return 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+  
+  let finalUrl = str;
+  if (str.includes('gravatar.com') || str.startsWith('file://') || str.startsWith('content://')) {
+    finalUrl = str;
+  } else if (str.startsWith('http://') || str.startsWith('https://')) {
+    if (!str.includes('localhost') && !str.includes('127.0.0.1') && !str.includes('10.0.2.2')) {
+      finalUrl = str;
+    } else {
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+      try {
+        const urlObj = new URL(str);
+        finalUrl = `${apiUrl}${urlObj.pathname}${urlObj.search}`;
+      } catch (e) {
+        finalUrl = str.startsWith('/') ? `${apiUrl}${str}` : `${apiUrl}/${str}`;
+      }
+    }
+  } else {
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+    try {
+      const urlObj = new URL(str);
+      finalUrl = `${apiUrl}${urlObj.pathname}${urlObj.search}`;
+    } catch (e) {
+      finalUrl = str.startsWith('/') ? `${apiUrl}${str}` : `${apiUrl}/${str}`;
+    }
+  }
+
+  // Prevent cache issues by appending a timestamp when a new fetch occurs
+  if (cacheBuster && !finalUrl.includes('gravatar.com')) {
+    finalUrl += (finalUrl.includes('?') ? '&' : '?') + 't=' + cacheBuster;
+  }
+  
+  return finalUrl;
+};
+
 export default function OpponentProfileScreen({ navigation, route }) {
   const { t, language, selectedOpponent } = useAppStore();
   
-  // Prioritize selectedOpponent from Zustand
-  const opponent = selectedOpponent || route.params?.opponent || {
+  // Prioritize route params (fresh click) over Zustand's global state
+  const opponent = route.params?.opponent || selectedOpponent || {
     id: '0',
     name: 'Unknown Player',
     elo: 1400,
@@ -26,6 +62,7 @@ export default function OpponentProfileScreen({ navigation, route }) {
   const [alertConfig, setAlertConfig] = React.useState({ visible: false, title: '', message: '' });
   const [actionSheetVisible, setActionSheetVisible] = React.useState(false);
   const [reportModalVisible, setReportModalVisible] = React.useState(false);
+  const [dataTimestamp] = React.useState(Date.now().toString());
 
   React.useEffect(() => {
     let subscription;
@@ -61,7 +98,7 @@ export default function OpponentProfileScreen({ navigation, route }) {
   const primarySport = opponent.primarySport || (opponent.sports && opponent.sports[0]) || 'Unknown';
   const secondarySport = opponent.secondarySport || (opponent.sports && opponent.sports[1]) || 'None';
   
-  const safeAvatar = opponent.avatar || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+  const safeAvatar = getAvatarUrl(opponent.avatar, dataTimestamp);
   const safeName = opponent.name || 'Unknown Player';
   
   return (

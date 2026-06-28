@@ -126,13 +126,31 @@ export default function VenueMapScreen({ navigation, route }) {
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
+
+    // 1. Jika ada auto-complete suggestion yang tampil, langsung pilih yang pertama (paling relevan)
+    if (suggestions.length > 0) {
+      handleSelectSuggestion(suggestions[0]);
+      return;
+    }
+
+    // 2. Jika tidak ada suggestion, cari secara manual dengan Photon API (tetap dilimit sesuai lokasi sekitar user)
     try {
-      const result = await Location.geocodeAsync(searchQuery);
-      if (result.length > 0) {
-        const loc = result[0];
+      const minLon = currentRegion.longitude - 0.5;
+      const minLat = currentRegion.latitude - 0.5;
+      const maxLon = currentRegion.longitude + 0.5;
+      const maxLat = currentRegion.latitude + 0.5;
+      const bbox = `${minLon},${minLat},${maxLon},${maxLat}`;
+
+      const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(searchQuery)}&lat=${currentRegion.latitude}&lon=${currentRegion.longitude}&limit=1&bbox=${bbox}`, {
+        headers: { 'User-Agent': 'SparoApp/1.0' }
+      });
+      const data = await res.json();
+      
+      if (data && data.features && data.features.length > 0) {
+        const geom = data.features[0].geometry;
         const newRegion = {
-          latitude: loc.latitude,
-          longitude: loc.longitude,
+          latitude: parseFloat(geom.coordinates[1]),
+          longitude: parseFloat(geom.coordinates[0]),
           latitudeDelta: 0.01,
           longitudeDelta: 0.01
         };
@@ -140,12 +158,29 @@ export default function VenueMapScreen({ navigation, route }) {
         if (mapRef.current) {
           mapRef.current.animateToRegion(newRegion, 1000);
         }
-        setSuggestions([]);
+        setIsFocused(false);
       } else {
-        alert('Location not found!');
+        // Fallback terakhir ke sistem Apple/Google Maps bawaan OS
+        const result = await Location.geocodeAsync(searchQuery);
+        if (result.length > 0) {
+          const loc = result[0];
+          const newRegion = {
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01
+          };
+          setCurrentRegion(newRegion);
+          if (mapRef.current) {
+            mapRef.current.animateToRegion(newRegion, 1000);
+          }
+          setIsFocused(false);
+        } else {
+          alert('Lokasi tidak ditemukan di area sekitar.');
+        }
       }
     } catch (e) {
-      alert('Error searching location');
+      alert('Error mencari lokasi.');
     }
   };
 
@@ -235,7 +270,9 @@ export default function VenueMapScreen({ navigation, route }) {
       latitude: currentRegion.latitude,
       longitude: currentRegion.longitude
     };
-    navigation.navigate('CreateChallenge', { newSelectedVenue: venue });
+    const { setTempVenue } = useAppStore.getState();
+    setTempVenue(venue);
+    navigation.goBack();
   };
 
   return (

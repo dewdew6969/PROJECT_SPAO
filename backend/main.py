@@ -455,7 +455,16 @@ def create_tournament(tournament: schemas.TournamentCreate, db: Session = Depend
 
 @app.get("/tournaments/", response_model=List[schemas.Tournament])
 def get_tournaments(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return db.query(models.Tournament).offset(skip).limit(limit).all()
+    return db.query(models.Tournament).order_by(models.Tournament.created_at.desc()).offset(skip).limit(limit).all()
+
+@app.delete("/tournaments/{tournament_id}")
+def delete_tournament(tournament_id: int, db: Session = Depends(get_db)):
+    db_tournament = db.query(models.Tournament).filter(models.Tournament.id == tournament_id).first()
+    if not db_tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    db.delete(db_tournament)
+    db.commit()
+    return {"message": "Tournament deleted successfully"}
 
 @app.post("/posts/", response_model=schemas.Post)
 def create_post(post: schemas.PostCreate, user_id: int, db: Session = Depends(get_db)):
