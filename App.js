@@ -3,11 +3,19 @@ import { AppState, LogBox } from 'react-native';
 
 // Sembunyikan semua pesan kuning (WARN) di layar HP agar presentasi mulus
 LogBox.ignoreAllLogs();
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 import OfflineIndicator from './src/components/OfflineIndicator';
 import useAppStore from './src/store/useAppStore';
+
+const SparoTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: '#0F1522',
+  },
+};
 
 export default function App() {
   const profile = useAppStore(state => state.profile);
@@ -42,7 +50,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
+      <NavigationContainer theme={SparoTheme}>
         <AppNavigator />
         <OfflineIndicator />
       </NavigationContainer>
