@@ -7,7 +7,6 @@ import {
   FlatList, 
   TextInput, 
   TouchableOpacity, 
-  Image, 
   KeyboardAvoidingView, 
   Platform, 
   StatusBar,
@@ -17,6 +16,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import useAppStore from '../../store/useAppStore';
+import { Image } from 'expo-image';
 
 export default function ChatScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
@@ -42,13 +42,21 @@ export default function ChatScreen({ navigation, route }) {
 
   const formatDate = (timestampStr) => {
     if (!timestampStr) return '';
-    const [hours, minutes] = timestampStr.split(':');
-    const date = new Date();
-    date.setHours(parseInt(hours, 10));
-    date.setMinutes(parseInt(minutes, 10));
+    let date;
     
-    // For simplicity in this demo, just return HH:MM since backend only sends HH:MM currently
-    return timestampStr; 
+    if (timestampStr.includes('T')) {
+       date = new Date(timestampStr);
+    } else {
+       const [hours, minutes] = timestampStr.split(':');
+       date = new Date();
+       date.setUTCHours(parseInt(hours, 10));
+       date.setUTCMinutes(parseInt(minutes, 10));
+    }
+    
+    // Gunakan getHours() agar zona waktu lokal (misal WIB +7) terbaca dengan akurat di semua HP
+    const h = date.getHours().toString().padStart(2, '0');
+    const m = date.getMinutes().toString().padStart(2, '0');
+    return `${h}.${m}`;
   };
 
   const getAvatarUrl = (avatarStr) => {
@@ -94,7 +102,7 @@ export default function ChatScreen({ navigation, route }) {
               id: String(msg.id),
               text: msg.text,
               sender: isFromMe ? 'user' : 'opponent',
-              timestamp: new Date(msg.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+              timestamp: new Date(msg.created_at + (msg.created_at.includes('Z') ? '' : 'Z')).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
               status: msg.status
             };
           });
@@ -144,11 +152,11 @@ export default function ChatScreen({ navigation, route }) {
 
   // Auto-scroll to bottom of messages
   const scrollToBottom = () => {
-    if (flatListRef.current) {
-      setTimeout(() => {
+    setTimeout(() => {
+      if (flatListRef.current) {
         flatListRef.current.scrollToEnd({ animated: true });
-      }, 100);
-    }
+      }
+    }, 100);
   };
 
   useEffect(() => {

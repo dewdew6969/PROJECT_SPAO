@@ -1,28 +1,75 @@
 import React, { useState, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, ScrollView, Platform, StatusBar, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Platform, StatusBar, RefreshControl, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import useAppStore from '../../store/useAppStore';
 
 export default function LeaderboardScreen() {
-  const { t, language } = useAppStore();
-  const [activeTab, setActiveTab] = useState('global');
-  const leaderboardData = [
-    { rank: 1, name: 'Samsudin', rating: 1540, winRate: '80%' },
-    { rank: 2, name: 'Alex', rating: 1420, winRate: '75%' },
-    { rank: 3, name: 'Budi', rating: 1390, winRate: '70%' },
-    { rank: 4, name: 'Citra', rating: 1350, winRate: '68%' },
-    { rank: 5, name: 'Dina', rating: 1200, winRate: '60%' },
-  ];
-
+  const { t, language, profile } = useAppStore();
+  const [activeTab, setActiveTab] = useState('national'); // 'city', 'province', 'national'
+  const [leaderboardData, setLeaderboardData] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  const getAvatarUrl = (str) => {
+    if (!str || str === "null") return 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+    
+    let finalUrl = str;
+    if (str.includes('gravatar.com') || str.startsWith('file://') || str.startsWith('content://')) {
+      finalUrl = str;
+    } else if (str.startsWith('http://') || str.startsWith('https://')) {
+      if (!str.includes('localhost') && !str.includes('127.0.0.1') && !str.includes('10.0.2.2')) {
+        finalUrl = str;
+      } else {
+        const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+        try {
+          const urlObj = new URL(str);
+          finalUrl = `${apiUrl}${urlObj.pathname}${urlObj.search}`;
+        } catch (e) {
+          finalUrl = str.startsWith('/') ? `${apiUrl}${str}` : `${apiUrl}/${str}`;
+        }
+      }
+    } else {
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+      try {
+        const urlObj = new URL(str);
+        finalUrl = `${apiUrl}${urlObj.pathname}${urlObj.search}`;
+      } catch (e) {
+        finalUrl = str.startsWith('/') ? `${apiUrl}${str}` : `${apiUrl}/${str}`;
+      }
+    }
+    return finalUrl;
+  };
+
+  const fetchLeaderboard = async () => {
+    if (!profile) return;
+    setIsLoading(true);
+    try {
+      const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+      const lat = profile.latitude || '';
+      const lon = profile.longitude || '';
+      const response = await fetch(`${API_URL}/leaderboard/?lat=${lat}&lon=${lon}&scope=${activeTab}`);
+      if (response.ok) {
+        const data = await response.json();
+        setLeaderboardData(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch leaderboard:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchLeaderboard();
+  }, [activeTab, profile]);
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
-  }, []);
+    fetchLeaderboard().then(() => setRefreshing(false));
+  }, [activeTab, profile]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -32,9 +79,15 @@ export default function LeaderboardScreen() {
         </View>
 
         <View style={styles.tabs}>
-          <Text style={styles.tabActive}>City</Text>
-          <Text style={styles.tab}>Province</Text>
-          <Text style={styles.tab}>National</Text>
+          <TouchableOpacity onPress={() => setActiveTab('city')}>
+            <Text style={activeTab === 'city' ? styles.tabActive : styles.tab}>City</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setActiveTab('province')}>
+            <Text style={activeTab === 'province' ? styles.tabActive : styles.tab}>Province</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setActiveTab('national')}>
+            <Text style={activeTab === 'national' ? styles.tabActive : styles.tab}>National</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.tableHeader}>
@@ -57,19 +110,33 @@ export default function LeaderboardScreen() {
             />
           }
         >
-          {leaderboardData.map((item) => (
-            <View key={item.rank} style={styles.row}>
-              <Text style={[styles.tdRank, { flex: 0.5 }]}>{item.rank}</Text>
-              <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center' }}>
-                <View style={styles.avatarMini}>
-                  <Feather name="user" size={14} color="#8A95A5" />
-                </View>
-                <Text style={styles.tdName}>{item.name}</Text>
-              </View>
-              <Text style={[styles.tdRating, { flex: 1 }]}>{item.rating}</Text>
-              <Text style={[styles.td, { flex: 1, textAlign: 'center' }]}>{item.winRate}</Text>
+          {isLoading && !refreshing ? (
+            <View style={{ padding: 40, alignItems: 'center' }}>
+              <ActivityIndicator size="large" color="#D4FF00" />
             </View>
-          ))}
+          ) : leaderboardData.length === 0 ? (
+            <View style={{ padding: 40, alignItems: 'center' }}>
+              <Text style={{ color: '#8A95A5', fontSize: 16 }}>Belum ada data peringkat di wilayah ini</Text>
+            </View>
+          ) : (
+            leaderboardData.map((item) => (
+              <View key={item.id} style={styles.row}>
+                <Text style={[styles.tdRank, { flex: 0.5 }]}>{item.rank}</Text>
+                <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center' }}>
+                  {item.avatar ? (
+                    <Image source={{ uri: getAvatarUrl(item.avatar) }} style={styles.avatarMini} />
+                  ) : (
+                    <View style={styles.avatarMiniPlaceholder}>
+                      <Feather name="user" size={14} color="#8A95A5" />
+                    </View>
+                  )}
+                  <Text style={styles.tdName} numberOfLines={1}>{item.full_name || item.username}</Text>
+                </View>
+                <Text style={[styles.tdRating, { flex: 1 }]}>{item.elo}</Text>
+                <Text style={[styles.td, { flex: 1, textAlign: 'center' }]}>{item.win_rate}</Text>
+              </View>
+            ))
+          )}
         </ScrollView>
       </LinearGradient>
     </SafeAreaView>
@@ -88,7 +155,8 @@ const styles = StyleSheet.create({
   th: { fontWeight: 'bold', color: '#5C677D', fontSize: 12, textTransform: 'uppercase' },
   row: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 15, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1C2433' },
   tdRank: { color: '#8A95A5', fontWeight: 'bold', fontSize: 16 },
-  avatarMini: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#2D3748', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  avatarMini: { width: 24, height: 24, borderRadius: 12, marginRight: 10 },
+  avatarMiniPlaceholder: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#2D3748', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   tdName: { color: '#FFF', fontSize: 16, fontWeight: '600' },
   tdRating: { color: '#D4FF00', fontSize: 16, fontWeight: 'bold', textAlign: 'center' },
   td: { color: '#C2D0E8' }

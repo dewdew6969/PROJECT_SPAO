@@ -58,6 +58,23 @@ UPLOADS_DIR = BASE_DIR / "uploads"
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
+def send_push_notification(token: str, title: str, body: str, data: dict = None):
+    try:
+        if not token or not token.startswith("ExponentPushToken"):
+            return False
+            
+        payload = {
+            "to": token,
+            "title": title,
+            "body": body,
+            "data": data or {}
+        }
+        response = requests.post("https://exp.host/--/api/v2/push/send", json=payload, timeout=5)
+        return response.status_code == 200
+    except Exception as e:
+        print(f"Failed to send push notification: {e}")
+        return False
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -122,6 +139,14 @@ async def setup_db():
     except Exception as e:
         import traceback
         return {"error_bocor": str(e), "laporan_lengkap": traceback.format_exc()}
+
+@app.get("/api/fix-db")
+def fix_database(db: Session = Depends(get_db)):
+    try:
+        models.Base.metadata.create_all(bind=engine)
+        return {"message": "Database tables synchronized successfully"}
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.post("/api/auth/send-otp")
 def send_otp(data: schemas.OTPSend, db: Session = Depends(get_db)):
@@ -295,6 +320,52 @@ def get_opponents(skip: int = 0, limit: int = 100, lat: float = None, lon: float
     result.sort(key=lambda x: (x['distance'] is None, x['distance'], -x.get('elo', 0)))
     return result
 
+@app.get("/leaderboard/", response_model=List[schemas.LeaderboardUser])
+def get_leaderboard(lat: float = None, lon: float = None, scope: str = 'national', db: Session = Depends(get_db)):
+    users = db.query(models.User).all()
+    
+    leaderboard = []
+    for user in users:
+        # Filter based on scope
+        if scope in ['city', 'province'] and lat is not None and lon is not None and user.latitude and user.longitude:
+            dist_meters = calculate_distance(lat, lon, user.latitude, user.longitude)
+            dist_km = dist_meters / 1000.0
+            
+            if scope == 'city' and dist_km > 50:
+                continue
+            if scope == 'province' and dist_km > 150:
+                continue
+        elif scope != 'national':
+            # If scope is city/province but no lat/lon provided (or user has no lat/lon), 
+            # we might want to skip or include them. Let's skip them if they don't have location and we filter.
+            if scope in ['city', 'province']:
+                continue
+                
+        # Calculate win_rate
+        if user.matches > 0:
+            win_rate_val = round((user.wins / user.matches) * 100)
+            win_rate = f"{win_rate_val}%"
+        else:
+            win_rate = "0%"
+            
+        leaderboard.append({
+            "id": user.id,
+            "username": user.username,
+            "full_name": user.full_name,
+            "avatar": user.avatar,
+            "elo": user.elo,
+            "win_rate": win_rate
+        })
+        
+    # Sort by elo descending
+    leaderboard.sort(key=lambda x: x['elo'], reverse=True)
+    
+    # Assign ranks
+    for i, user_dict in enumerate(leaderboard):
+        user_dict['rank'] = i + 1
+        
+    return leaderboard
+
 @app.post("/challenges/", response_model=schemas.Challenge)
 def create_challenge(challenge: schemas.ChallengeCreate, challenger_id: int, db: Session = Depends(get_db)):
     db_challenge = models.Challenge(**challenge.dict(), challenger_id=challenger_id)
@@ -305,13 +376,22 @@ def create_challenge(challenge: schemas.ChallengeCreate, challenger_id: int, db:
     # Send push notification to opponent
     opponent = db.query(models.User).filter(models.User.id == challenge.opponent_id).first()
     challenger = db.query(models.User).filter(models.User.id == challenger_id).first()
-    if opponent and opponent.expo_push_token and challenger:
-        send_push_notification(
-            opponent.expo_push_token, 
-            "Tantangan Baru! 🥊", 
-            f"{challenger.full_name} menantang Anda bertanding {challenge.sport}!",
-            {"type": "new_challenge", "challenge_id": db_challenge.id}
-        )
+    if opponent and challenger:
+        title = "Tantangan Baru! 🥊"
+        body = f"{challenger.full_name} menantang Anda bertanding {challenge.sport}!"
+        
+        # Simpan in-app notification
+        new_notif = models.Notification(user_id=opponent.id, title=title, body=body)
+        db.add(new_notif)
+        db.commit()
+        
+        if opponent.expo_push_token:
+            send_push_notification(
+                opponent.expo_push_token, 
+                title, 
+                body,
+                {"type": "new_challenge", "challenge_id": db_challenge.id}
+            )
         
     return db_challenge
 
@@ -362,14 +442,23 @@ def respond_challenge(challenge_id: int, user_id: int, is_accepted: bool, db: Se
     # Send push notification to challenger
     challenger = db.query(models.User).filter(models.User.id == challenge.challenger_id).first()
     opponent = db.query(models.User).filter(models.User.id == user_id).first()
-    if challenger and challenger.expo_push_token and opponent:
+    if challenger and opponent:
         status_text = "menerima" if is_accepted else "menolak"
-        send_push_notification(
-            challenger.expo_push_token, 
-            "Respon Tantangan", 
-            f"{opponent.full_name} {status_text} tantangan Anda.",
-            {"type": "challenge_response", "challenge_id": challenge.id, "status": challenge.status}
-        )
+        title = "Respon Tantangan"
+        body = f"{opponent.full_name} {status_text} tantangan Anda."
+        
+        # Simpan in-app notification
+        new_notif = models.Notification(user_id=challenger.id, title=title, body=body)
+        db.add(new_notif)
+        db.commit()
+        
+        if challenger.expo_push_token:
+            send_push_notification(
+                challenger.expo_push_token, 
+                title, 
+                body,
+                {"type": "challenge_response", "challenge_id": challenge.id, "status": challenge.status}
+            )
         
     return {"message": "Respon berhasil disimpan", "challenge": challenge}
 
@@ -405,6 +494,12 @@ def submit_score(challenge_id: int, user_id: int, my_score: int, opponent_score:
         challenge.challenger_score = opponent_score
     else:
         raise HTTPException(status_code=403, detail="Akses ditolak")
+        
+    if challenge.is_competitive:
+        challenge.status = "awaiting_verification"
+    else:
+        challenge.status = "COMPLETED"
+
     db.commit()
     db.refresh(challenge)
     return {"message": "Skor disubmit", "challenge": challenge}
@@ -697,41 +792,58 @@ def delete_tournament(tournament_id: int, db: Session = Depends(get_db)):
     db_tournament = db.query(models.Tournament).filter(models.Tournament.id == tournament_id).first()
     if not db_tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
+        
+    # Cascade delete: hapus semua pendaftar turnamen ini terlebih dahulu
+    db.query(models.TournamentRegistration).filter(models.TournamentRegistration.tournament_id == tournament_id).delete()
+    
     db.delete(db_tournament)
     db.commit()
     return {"message": "Tournament deleted successfully"}
 
 @app.post("/tournaments/{tournament_id}/register")
 def register_tournament(tournament_id: int, username: str, db: Session = Depends(get_db)):
-    db_tournament = db.query(models.Tournament).filter(models.Tournament.id == tournament_id).first()
-    if not db_tournament:
-        raise HTTPException(status_code=404, detail="Tournament not found")
-    
-    # Check if already registered
-    existing_reg = db.query(models.TournamentRegistration).filter(
-        models.TournamentRegistration.tournament_id == tournament_id,
-        models.TournamentRegistration.username == username
-    ).first()
-    
-    if existing_reg:
-        raise HTTPException(status_code=400, detail="User already registered")
+    try:
+        # Panggil otomatis create_all agar tabel terbuat jika belum ada
+        models.Base.metadata.create_all(bind=engine)
+        
+        db_tournament = db.query(models.Tournament).filter(models.Tournament.id == tournament_id).first()
+        if not db_tournament:
+            raise HTTPException(status_code=404, detail="Tournament not found")
+        
+        # Check if already registered
+        existing_reg = db.query(models.TournamentRegistration).filter(
+            models.TournamentRegistration.tournament_id == tournament_id,
+            models.TournamentRegistration.username == username
+        ).first()
+        
+        if existing_reg:
+            raise HTTPException(status_code=400, detail="User already registered")
 
-    if db_tournament.max_participants > 0:
-        db_tournament.max_participants -= 1
-        
-        new_reg = models.TournamentRegistration(
-            tournament_id=tournament_id,
-            username=username
-        )
-        db.add(new_reg)
-        db.commit()
-        db.refresh(db_tournament)
-        
-    return db_tournament
+        if db_tournament.max_participants > 0:
+            db_tournament.max_participants -= 1
+            
+            new_reg = models.TournamentRegistration(
+                tournament_id=tournament_id,
+                username=username
+            )
+            db.add(new_reg)
+            db.commit()
+            db.refresh(db_tournament)
+        else:
+            raise HTTPException(status_code=400, detail="Tournament is full")
+            
+        return db_tournament
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/tournaments/registered/{username}")
 def get_registered_tournaments(username: str, db: Session = Depends(get_db)):
-    registrations = db.query(models.TournamentRegistration).filter(
-        models.TournamentRegistration.username == username
-    ).all()
-    return [reg.tournament_id for reg in registrations]
+    try:
+        models.Base.metadata.create_all(bind=engine)
+        registrations = db.query(models.TournamentRegistration).filter(
+            models.TournamentRegistration.username == username
+        ).all()
+        return [reg.tournament_id for reg in registrations]
+    except Exception as e:
+        return [] # Return empty if table doesn't exist yet

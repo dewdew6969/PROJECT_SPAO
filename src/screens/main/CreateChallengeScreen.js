@@ -1,11 +1,12 @@
 import React, { useState, useContext } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, StatusBar, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, StatusBar, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import useAppStore from '../../store/useAppStore';
+import { Image } from 'expo-image';
 
 const getAvatarUrl = (str) => {
   if (!str || str === "null") return 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
@@ -35,7 +36,7 @@ export default function CreateChallengeScreen({ navigation, route }) {
     isPro: true
   };
 
-  const [activeSport, setActiveSport] = useState(profile.primarySport || 'Badminton');
+  const [activeSport, setActiveSport] = useState(profile?.primarySport || 'Badminton');
   
   // Date & Time Picker State
   const [matchDate, setMatchDate] = useState(new Date());
@@ -72,8 +73,7 @@ export default function CreateChallengeScreen({ navigation, route }) {
       const response = await fetch(`${API_URL}/challenges/?challenger_id=${profile.id}`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-        },
+          'Content-Type': 'application/json' },
         body: JSON.stringify({
           opponent_id: opponent.id,
           sport: activeSport,
@@ -178,7 +178,7 @@ export default function CreateChallengeScreen({ navigation, route }) {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t('sports_category').toUpperCase()}</Text>
             <View style={styles.sportRow}>
-              {[profile.primarySport, profile.secondarySport].filter(Boolean).map((sport) => (
+              {[profile?.primarySport, profile?.secondarySport].filter(Boolean).map((sport) => (
                 <TouchableOpacity 
                   key={sport} 
                   style={[styles.sportBtn, activeSport === sport && styles.sportBtnActive]}
@@ -373,8 +373,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 25,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   emptyVenueText: { fontSize: 14, fontWeight: 'bold', color: '#FFF', marginBottom: 4 },
   emptyVenueSubtext: { fontSize: 11, color: '#8A95A5' },
 

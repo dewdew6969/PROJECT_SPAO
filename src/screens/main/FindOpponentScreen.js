@@ -1,9 +1,10 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Image, Platform, StatusBar, Modal, Animated } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Platform, StatusBar, Modal, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import useAppStore from '../../store/useAppStore';
+import { Image } from 'expo-image';
 
 const SkeletonCard = () => {
   const pulseAnim = React.useRef(new Animated.Value(0.3)).current;
@@ -38,14 +39,12 @@ const SkeletonCard = () => {
 export default function FindOpponentScreen({ navigation }) {
   const { profile, t, language } = useAppStore();
 
-  if (!profile) return null;
-
-  const userElo = profile.elo || 1500;
+  const userElo = profile?.elo || 1500;
   const [isLoading, setIsLoading] = useState(true);
   const [opponents, setOpponents] = useState([]);
 
   // Single-select: Default to primary sport
-  const [activeSport, setActiveSport] = useState(profile.primarySport || 'Badminton');
+  const [activeSport, setActiveSport] = useState(profile?.primarySport || 'Badminton');
   const [showAllSportsModal, setShowAllSportsModal] = useState(false);
 
   // Search and Filter States
@@ -89,12 +88,12 @@ export default function FindOpponentScreen({ navigation }) {
 
   const isFilterApplied = appliedLevel !== 'ALL' || appliedDistance !== 'ALL' || appliedMinElo !== 'ALL';
 
-  // Update active sport ONLY when profile.primarySport changes
+  // Update active sport ONLY when profile?.primarySport changes
   useEffect(() => {
-    if (profile.primarySport) {
+    if (profile?.primarySport) {
       setActiveSport(profile.primarySport);
     }
-  }, [profile.primarySport]);
+  }, [profile?.primarySport]);
 
   // Fetch opponents from backend or fallback to mock
   useEffect(() => {
@@ -108,7 +107,7 @@ export default function FindOpponentScreen({ navigation }) {
         const params = new URLSearchParams();
         
         // Pass coordinates for real distance calculation if available
-        if (profile.latitude && profile.longitude) {
+        if (profile?.latitude && profile?.longitude) {
           params.append('lat', profile.latitude);
           params.append('lon', profile.longitude);
         }
@@ -176,7 +175,7 @@ export default function FindOpponentScreen({ navigation }) {
     
     fetchOpponents();
     return () => { isMounted = false; };
-  }, [activeSport, appliedLevel, appliedDistance, appliedMinElo, searchQuery, profile.latitude, profile.longitude]);
+  }, [activeSport, appliedLevel, appliedDistance, appliedMinElo, searchQuery, profile?.latitude, profile?.longitude]);
 
   const allSports = [
     { id: '1', name: 'Badminton', icon: 'badminton' },

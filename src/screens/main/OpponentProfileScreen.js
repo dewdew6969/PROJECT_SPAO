@@ -1,11 +1,14 @@
 import React from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, StatusBar, Modal, ToastAndroid } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, StatusBar, Modal, ToastAndroid } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import ZoomableImage from '../../components/profile/ZoomableImage';
 import * as ScreenCapture from 'expo-screen-capture';
 import useAppStore from '../../store/useAppStore';
 import CustomAlert from '../../components/CustomAlert';
+import { Image } from 'expo-image';
 
 const getAvatarUrl = (str, cacheBuster = null) => {
   if (!str || str === "null") return 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
@@ -35,10 +38,7 @@ const getAvatarUrl = (str, cacheBuster = null) => {
     }
   }
 
-  // Prevent cache issues by appending a timestamp when a new fetch occurs
-  if (cacheBuster && !finalUrl.includes('gravatar.com')) {
-    finalUrl += (finalUrl.includes('?') ? '&' : '?') + 't=' + cacheBuster;
-  }
+  // cacheBuster removed to prevent image flash with expo-image
   
   return finalUrl;
 };
@@ -47,7 +47,7 @@ export default function OpponentProfileScreen({ navigation, route }) {
   const { t, language, selectedOpponent } = useAppStore();
   
   // Prioritize route params (fresh click) over Zustand's global state
-  const opponent = route.params?.opponent || selectedOpponent || {
+  const initialOpponent = route.params?.opponent || selectedOpponent || {
     id: '0',
     name: 'Unknown Player',
     elo: 1400,
@@ -58,6 +58,40 @@ export default function OpponentProfileScreen({ navigation, route }) {
     avatar: 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y',
     sports: ['Badminton']
   };
+
+  const [opponent, setOpponent] = React.useState(initialOpponent);
+  
+  React.useEffect(() => {
+    let intervalId;
+    const fetchOpponentData = async () => {
+      if (!opponent.id || opponent.id === '0') return;
+      try {
+        const apiUrl = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+        const response = await fetch(`${apiUrl}/users/${opponent.id}?t=${Date.now()}`);
+        if (response.ok) {
+          const data = await response.json();
+          // Pertahankan properti lama yang mungkin tidak ada di DB (misal distance)
+          setOpponent(prev => ({
+            ...prev,
+            ...data,
+            name: data.full_name || data.username || prev.name,
+            level: data.primary_level || prev.level,
+            sports: [data.primary_sport, data.secondary_sport].filter(Boolean)
+          }));
+        }
+      } catch (err) {
+        console.log("Failed to poll opponent data:", err);
+      }
+    };
+
+    // Initial fetch
+    fetchOpponentData();
+
+    // Auto-polling setiap 2 detik sesuai permintaan user (realtime update)
+    intervalId = setInterval(fetchOpponentData, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [opponent.id]);
   const [isZoomVisible, setIsZoomVisible] = React.useState(false);
   const [alertConfig, setAlertConfig] = React.useState({ visible: false, title: '', message: '' });
   const [actionSheetVisible, setActionSheetVisible] = React.useState(false);
@@ -137,7 +171,10 @@ export default function OpponentProfileScreen({ navigation, route }) {
             
             <View style={styles.locationRow}>
               <Feather name="map-pin" size={13} color="#8A95A5" style={{ marginRight: 4 }} />
-              <Text style={styles.locationText}>{opponent.distance} away • Jakarta, Indonesia</Text>
+              <Text style={styles.locationText}>
+                {opponent.distance ? `${opponent.distance} away • ` : ''} 
+                {opponent.location || 'Lokasi Belum Diatur'}
+              </Text>
             </View>
 
             {/* Main Stats Header Cards */}
@@ -294,12 +331,14 @@ export default function OpponentProfileScreen({ navigation, route }) {
 
       {/* Image Zoom Modal */}
       <Modal visible={isZoomVisible} transparent={true} animationType="fade" onRequestClose={() => setIsZoomVisible(false)}>
-        <View style={styles.modalBackground}>
+        <GestureHandlerRootView style={styles.modalBackground}>
           <TouchableOpacity style={styles.closeZoomBtn} onPress={() => setIsZoomVisible(false)}>
             <Feather name="x" size={28} color="#FFF" />
           </TouchableOpacity>
-          <Image source={{ uri: safeAvatar.replace('w=150', 'w=800').replace('q=80', 'q=100') }} style={styles.zoomedImage} resizeMode="contain" />
-        </View>
+          <View style={{ flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center', paddingVertical: 80 }}>
+            <ZoomableImage uri={safeAvatar} />
+          </View>
+        </GestureHandlerRootView>
       </Modal>
 
       {/* Action Sheet Modal */}

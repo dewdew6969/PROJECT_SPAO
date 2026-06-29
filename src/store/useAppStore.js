@@ -588,11 +588,20 @@ const useAppStore = create((set, get) => ({
         const isFromMe = String(sender_id) === String(userId);
         const roomId = isFromMe ? String(receiver_id) : String(sender_id);
         
+        let localTimestamp = timestamp;
+        if (timestamp && timestamp.includes(':') && !timestamp.includes('T')) {
+          const [hours, minutes] = timestamp.split(':');
+          const date = new Date();
+          date.setUTCHours(parseInt(hours, 10));
+          date.setUTCMinutes(parseInt(minutes, 10));
+          localTimestamp = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        }
+
         const formattedMsg = {
           id: String(id),
           text,
           sender: isFromMe ? 'user' : 'opponent',
-          timestamp,
+          timestamp: localTimestamp,
           status
         };
         

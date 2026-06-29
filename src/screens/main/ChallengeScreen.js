@@ -1,7 +1,9 @@
 import React, { useContext, useState, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, StatusBar, ToastAndroid, Modal, TextInput, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, StatusBar, ToastAndroid, Modal, TextInput, RefreshControl, Image, Alert } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
 import useAppStore from '../../store/useAppStore';
 
@@ -22,6 +24,7 @@ export default function ChallengeScreen() {
   }, []);
 
   const fetchChallenges = async () => {
+    if (!profile?.id) return;
     try {
       const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
       const response = await fetch(`${API_URL}/challenges/${profile.id}`);
@@ -31,7 +34,7 @@ export default function ChallengeScreen() {
         // Format data with async mapping to get enemy names
         const formattedData = await Promise.all(data.map(async match => {
           // Support both new backend (challenger_id) and old backend (sender_username)
-          const isChallenger = match.challenger_id === profile.id || match.sender_username === profile.username;
+          const isChallenger = match.challenger_id === profile?.id || match.sender_username === profile?.username;
           const enemyId = isChallenger ? match.opponent_id : match.challenger_id;
           const enemyUsername = isChallenger ? match.receiver_username : match.sender_username;
           
@@ -53,13 +56,22 @@ export default function ChallengeScreen() {
             console.error('Failed to fetch enemy name', e);
           }
           
-          const dateStr = new Date(match.match_date || match.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+          const startDate = new Date(match.match_date || match.date);
+          const baseDateStr = startDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+          const startTime = startDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+          let fullDateStr = `${baseDateStr}, ${startTime}`;
+
+          if (match.match_end_date) {
+              const endDate = new Date(match.match_end_date);
+              const endTime = endDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+              fullDateStr = `${baseDateStr}, ${startTime} - ${endTime}`;
+          }
           
           return {
             id: match.id,
             name: name,
             sport: match.sport + (match.is_competitive ? ' • Competitive' : ' • Friendly'),
-            date: dateStr,
+            date: fullDateStr,
             venue: match.venue_name || match.location,
             status: match.status ? match.status.toLowerCase() : 'pending',
             isIncoming: !isChallenger
@@ -79,12 +91,28 @@ export default function ChallengeScreen() {
 
   React.useEffect(() => {
     fetchChallenges();
-  }, [profile.id]);
+    
+    // Polling setiap 2 detik agar BENAR-BENAR realtime
+    const intervalId = setInterval(() => {
+        fetchChallenges();
+    }, 2000);
+    
+    return () => clearInterval(intervalId);
+  }, [profile?.id]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchChallenges();
+    }, [profile?.id])
+  );
 
   const [scoreModalVisible, setScoreModalVisible] = useState(false);
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [myScore, setMyScore] = useState('');
   const [opponentScore, setOpponentScore] = useState('');
+  const [proofImage, setProofImage] = useState(null);
+  const [isCompetitiveMatch, setIsCompetitiveMatch] = useState(false);
+  const [isSubmittingScore, setIsSubmittingScore] = useState(false);
 
   const updateStatus = async (id, status) => {
     try {
@@ -109,19 +137,60 @@ export default function ChallengeScreen() {
     updateStatus(id, 'rejected');
   };
 
-  const openScoreModal = (id) => {
-    setSelectedMatchId(id);
+  const openScoreModal = (match) => {
+    setSelectedMatchId(match.id);
+    setIsCompetitiveMatch(match.sport.toLowerCase().includes('competitive'));
     setMyScore('');
     setOpponentScore('');
+    setProofImage(null);
     setScoreModalVisible(true);
   };
 
-  const handleSubmitScore = () => {
-    setCompletedMatches(completedMatches.map(m => 
-      m.id === selectedMatchId ? { ...m, status: 'completed' } : m
-    ));
-    setScoreModalVisible(false);
-    if (Platform.OS === 'android') ToastAndroid.show(t('score_submitted_success'), ToastAndroid.LONG);
+  const [imagePickerModalVisible, setImagePickerModalVisible] = useState(false);
+
+  const pickImage = () => {
+    setImagePickerModalVisible(true);
+  };
+
+  const handleSubmitScore = async () => {
+    if (isCompetitiveMatch && !proofImage) {
+      if (Platform.OS === 'android') ToastAndroid.show('Mohon unggah foto bukti skor untuk validasi kemenangan!', ToastAndroid.LONG);
+      return;
+    }
+    
+    setIsSubmittingScore(true);
+    try {
+      const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+      
+      if (proofImage) {
+        const formData = new FormData();
+        const filename = proofImage.split('/').pop();
+        const match = /\\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image`;
+        formData.append('file', { uri: proofImage, name: filename, type });
+        
+        await fetch(`${API_URL}/challenges/${selectedMatchId}/upload-proof`, {
+          method: 'POST',
+          body: formData,
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
+      
+      const response = await fetch(`${API_URL}/challenges/${selectedMatchId}/submit-score?user_id=${profile.id}&my_score=${myScore}&opponent_score=${opponentScore}`, {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        setScoreModalVisible(false);
+        fetchChallenges();
+        if (Platform.OS === 'android') ToastAndroid.show(t('score_submitted_success'), ToastAndroid.LONG);
+      }
+    } catch (err) {
+      console.error(err);
+      if (Platform.OS === 'android') ToastAndroid.show('Gagal mengirim skor', ToastAndroid.SHORT);
+    } finally {
+      setIsSubmittingScore(false);
+    }
   };
 
   if (!profile) return null; // Cegah crash saat profile direset menjadi null ketika proses logout
@@ -229,6 +298,11 @@ export default function ChallengeScreen() {
                 <Feather name="map-pin" size={14} color="#8A95A5" />
                 <Text style={styles.detail}>{match.venue}</Text>
               </View>
+              <View style={[styles.actions, { marginTop: 15 }]}>
+                <TouchableOpacity style={styles.btnPrimary} onPress={() => openScoreModal(match)}>
+                  <Text style={styles.btnTextPrimary}>{t('input_score')}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ))}
 
@@ -293,12 +367,73 @@ export default function ChallengeScreen() {
               </View>
             </View>
 
+            {isCompetitiveMatch && (
+              <View style={styles.proofSection}>
+                <Text style={styles.proofLabel}>Wajib Unggah Foto Papan Skor (Validasi) <Text style={{ color: '#FF4D4D' }}>*</Text></Text>
+                <TouchableOpacity style={styles.proofBtn} onPress={pickImage}>
+                  {proofImage ? (
+                    <Image source={{ uri: proofImage }} style={styles.proofImagePreview} />
+                  ) : (
+                    <View style={styles.proofPlaceholder}>
+                      <Feather name="camera" size={32} color="#8A95A5" />
+                      <Text style={styles.proofPlaceholderText}>Ambil Foto Skor</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
             <TouchableOpacity 
-              style={[styles.btnSubmitScore, (!myScore || !opponentScore) && { opacity: 0.5 }]} 
-              disabled={!myScore || !opponentScore}
+              style={[styles.btnSubmitScore, (!myScore || !opponentScore || (isCompetitiveMatch && !proofImage) || isSubmittingScore) && { opacity: 0.5 }]} 
+              disabled={!myScore || !opponentScore || (isCompetitiveMatch && !proofImage) || isSubmittingScore}
               onPress={handleSubmitScore}
             >
-              <Text style={styles.btnTextSubmitScore}>{t('submit_score')}</Text>
+              <Text style={styles.btnTextSubmitScore}>{isSubmittingScore ? 'MENGIRIM...' : t('submit_score')}</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Custom Image Picker Modal */}
+      <Modal visible={imagePickerModalVisible} transparent={true} animationType="fade" onRequestClose={() => setImagePickerModalVisible(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setImagePickerModalVisible(false)}>
+          <View style={styles.actionSheet}>
+            <View style={styles.actionSheetHeader}>
+              <Text style={styles.actionSheetTitle}>Unggah Foto Skor</Text>
+            </View>
+            <TouchableOpacity style={styles.actionSheetItem} onPress={async () => {
+              setImagePickerModalVisible(false);
+              const { status } = await ImagePicker.requestCameraPermissionsAsync();
+              if (status !== 'granted') {
+                if (Platform.OS === 'android') ToastAndroid.show('Izin kamera ditolak', ToastAndroid.SHORT);
+                return;
+              }
+              let result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                quality: 0.8,
+              });
+              if (!result.canceled) {
+                setProofImage(result.assets[0].uri);
+              }
+            }}>
+              <Feather name="camera" size={20} color="#FFF" style={{ marginRight: 15 }} />
+              <Text style={styles.actionSheetText}>Kamera</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.actionSheetItem} onPress={async () => {
+              setImagePickerModalVisible(false);
+              let result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                quality: 0.8,
+              });
+              if (!result.canceled) {
+                setProofImage(result.assets[0].uri);
+              }
+            }}>
+              <Feather name="image" size={20} color="#FFF" style={{ marginRight: 15 }} />
+              <Text style={styles.actionSheetText}>Galeri</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -348,6 +483,19 @@ const styles = StyleSheet.create({
   scoreLabel: { fontSize: 12, color: '#8A95A5', marginBottom: 10, fontWeight: 'bold' },
   scoreInput: { backgroundColor: '#0F1522', color: '#FFF', fontSize: 32, fontWeight: 'bold', width: 80, height: 80, textAlign: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#233045' },
   vsText: { color: '#D4FF00', fontWeight: 'bold', fontSize: 16, marginHorizontal: 15, marginTop: 25 },
+  proofSection: { marginBottom: 25 },
+  proofLabel: { fontSize: 12, color: '#8A95A5', marginBottom: 10, fontWeight: 'bold' },
+  proofBtn: { backgroundColor: '#0F1522', height: 120, borderRadius: 12, borderWidth: 1, borderColor: '#233045', borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  proofPlaceholder: { alignItems: 'center' },
+  proofPlaceholderText: { color: '#8A95A5', marginTop: 8, fontSize: 12 },
+  proofImagePreview: { width: '100%', height: '100%', resizeMode: 'cover' },
   btnSubmitScore: { backgroundColor: '#D4FF00', paddingVertical: 15, borderRadius: 12, alignItems: 'center' },
-  btnTextSubmitScore: { color: '#0F1522', fontWeight: 'bold', fontSize: 16 }
+  btnTextSubmitScore: { color: '#0F1522', fontWeight: 'bold', fontSize: 16 },
+
+  // Action Sheet for Image Picker
+  actionSheet: { backgroundColor: '#1C2433', width: '100%', position: 'absolute', bottom: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 20 },
+  actionSheetHeader: { marginBottom: 20, alignItems: 'center' },
+  actionSheetTitle: { fontSize: 16, fontWeight: 'bold', color: '#8A95A5' },
+  actionSheetItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#2D3748' },
+  actionSheetText: { fontSize: 16, color: '#FFF' }
 });

@@ -1,5 +1,5 @@
 import React, { useContext, useRef, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, StatusBar, Animated, Modal, Dimensions, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, StatusBar, Animated, Modal, Dimensions, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import useAppStore from '../../store/useAppStore';
 import CustomConfirm from '../../components/CustomConfirm';
 import CustomAlert from '../../components/CustomAlert';
+import { Image } from 'expo-image';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = width - 40; // 20 padding left + 20 padding right
@@ -41,10 +42,7 @@ const getAvatarUrl = (str, cacheBuster = null) => {
     }
   }
 
-  // Prevent cache issues by appending a timestamp when a new fetch occurs
-  if (cacheBuster && !finalUrl.includes('gravatar.com')) {
-    finalUrl += (finalUrl.includes('?') ? '&' : '?') + 't=' + cacheBuster;
-  }
+  // cacheBuster removed to prevent image flash with expo-image
   
   return finalUrl;
 };
@@ -74,11 +72,26 @@ export default function DashboardScreen({ navigation }) {
   const [registerAlertVisible, setRegisterAlertVisible] = useState(false);
   const [registeredTournament, setRegisteredTournament] = useState(null);
   const [registeredTournamentIds, setRegisteredTournamentIds] = useState([]);
+  const [apiHasUnread, setApiHasUnread] = useState(false);
+
+  const fetchUnreadStatus = async () => {
+    if (!profile) return;
+    try {
+      const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+      const response = await fetch(`${API_URL}/chats/${profile.id}?t=${Date.now()}`);
+      if (response.ok) {
+        const chats = await response.json();
+        const hasUnread = chats.some(chat => chat.unread_count > 0);
+        setApiHasUnread(hasUnread);
+      }
+    } catch (e) {
+      console.log('Unread check failed', e);
+    }
+  };
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    Promise.all([fetchOpponents(), fetchTournaments(), fetchRegisteredTournaments()]).then(() => setRefreshing(false));
-    setDataTimestamp(Date.now().toString());
+    Promise.all([fetchOpponents(), fetchTournaments(), fetchRegisteredTournaments(), fetchUnreadStatus()]).then(() => setRefreshing(false));
   }, [profile?.username]);
 
   const fetchOpponents = async () => {
@@ -177,6 +190,14 @@ export default function DashboardScreen({ navigation }) {
 
   const handleRegisterTournament = async (id, title) => {
     if (!id || !profile?.username) return;
+    
+    // Check if slots are 0 to prevent optimistic UI
+    const targetTourney = tournaments.find(t => t.id === id);
+    if (targetTourney && targetTourney.max_participants <= 0) {
+      alert('Maaf, slot untuk turnamen ini sudah penuh!');
+      return;
+    }
+    
     try {
       // 1. Update UI Immediately (Optimistic Update for ID and Slots)
       const newIds = [...registeredTournamentIds, id];
@@ -211,9 +232,21 @@ export default function DashboardScreen({ navigation }) {
 
   useFocusEffect(
     React.useCallback(() => {
+      // Fetch immediately on focus
       fetchOpponents();
       fetchTournaments();
       fetchRegisteredTournaments();
+      fetchUnreadStatus();
+
+      // Poll every 5 seconds to keep Slots and Registrations real-time
+      const intervalId = setInterval(() => {
+        fetchTournaments();
+        fetchRegisteredTournaments();
+        fetchUnreadStatus();
+      }, 5000);
+
+      // Clear interval when screen loses focus
+      return () => clearInterval(intervalId);
     }, [profile?.username, profile?.latitude, profile?.longitude])
   );
 
@@ -222,13 +255,11 @@ export default function DashboardScreen({ navigation }) {
       Animated.timing(fadeAnim, {
         toValue: 1,
         duration: 800,
-        useNativeDriver: true,
-      }),
+        useNativeDriver: true }),
       Animated.timing(slideAnim, {
         toValue: 0,
         duration: 800,
-        useNativeDriver: true,
-      })
+        useNativeDriver: true })
     ]).start();
   }, []);
   
@@ -237,10 +268,11 @@ export default function DashboardScreen({ navigation }) {
   // Calculate win rate
   const winRate = profile.matches > 0 ? Math.round((profile.wins / profile.matches) * 100) : 0;
 
-  // Check for unread messages
-  const hasUnreadMessages = Object.values(chatRooms || {}).some(roomMessages => 
+  // Check for unread messages (combine WS state and API state)
+  const hasUnreadWS = Object.values(chatRooms || {}).some(roomMessages => 
     roomMessages.some(msg => msg.sender === 'opponent' && msg.status !== 'read')
   );
+  const hasUnreadMessages = hasUnreadWS || apiHasUnread;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -291,7 +323,7 @@ export default function DashboardScreen({ navigation }) {
                 activeOpacity={0.8}
               >
                 <Image 
-                  source={{ uri: getAvatarUrl(profile?.avatar, dataTimestamp) }} 
+                  source={{ uri: getAvatarUrl(profile?.avatar) }} 
                   style={styles.avatarImage} 
                 />
               </TouchableOpacity>
@@ -379,26 +411,22 @@ export default function DashboardScreen({ navigation }) {
               const scale = scrollX.interpolate({
                 inputRange,
                 outputRange: [0.75, 1, 0.75], // Mengecil lebih dramatis
-                extrapolate: 'clamp',
-              });
+                extrapolate: 'clamp' });
 
               const opacity = scrollX.interpolate({
                 inputRange,
                 outputRange: [0.3, 1, 0.3], // Memudar saat digeser
-                extrapolate: 'clamp',
-              });
+                extrapolate: 'clamp' });
 
               const shadowOpacity = scrollX.interpolate({
                 inputRange,
                 outputRange: [0, 0.4, 0], // Shadow hilang perlahan saat digeser
-                extrapolate: 'clamp',
-              });
+                extrapolate: 'clamp' });
 
               const elevation = scrollX.interpolate({
                 inputRange,
                 outputRange: [0, 15, 0], // Untuk efek shadow di Android
-                extrapolate: 'clamp',
-              });
+                extrapolate: 'clamp' });
 
               return (
                 <Animated.View 
@@ -418,12 +446,17 @@ export default function DashboardScreen({ navigation }) {
                     style={styles.aiMatchTop}
                     activeOpacity={0.7}
                     onPress={() => {
-                      const fullOpponentData = { ...match, name: match.full_name || match.username, level: highestLevel, distance: opponentDistance, score: match.sportsmanship || '5.0', sports: [match.primary_sport || 'Badminton'] };
+                      let userSports = [];
+                      if (match.primary_sport) userSports.push(match.primary_sport);
+                      if (match.secondary_sport) userSports.push(match.secondary_sport);
+                      if (userSports.length === 0) userSports.push('Badminton');
+
+                      const fullOpponentData = { ...match, name: match.full_name || match.username, level: highestLevel, distance: opponentDistance, score: match.sportsmanship || '5.0', sports: userSports };
                       setSelectedOpponent(fullOpponentData);
                       navigation.navigate('OpponentProfile');
                     }}
                   >
-                    <Image source={{ uri: getAvatarUrl(match.avatar, dataTimestamp) }} style={styles.aiAvatar} />
+                    <Image source={{ uri: getAvatarUrl(match.avatar) }} style={styles.aiAvatar} />
                     <View style={styles.aiMatchDetails}>
                       <Text style={styles.aiMatchName}>{match.full_name || match.username}</Text>
                       <View style={styles.aiMatchBadges}>
@@ -506,6 +539,7 @@ export default function DashboardScreen({ navigation }) {
               
               const isRegistered = registeredTournamentIds.includes(tourney.id);
               const maxParticipants = tourney.max_participants || 0;
+              const isFull = maxParticipants <= 0 && !isRegistered;
               
               // Tema warna dibuat bervariasi otomatis berdasarkan urutan index
               const colorThemes = [
@@ -521,7 +555,7 @@ export default function DashboardScreen({ navigation }) {
                   key={tourney.id || index} 
                   style={[styles.tournamentCard, { borderColor: theme.bgColor + '40', shadowColor: theme.bgColor }]} 
                   activeOpacity={0.8}
-                  disabled={isRegistered}
+                  disabled={isRegistered || isFull}
                   onPress={() => handleRegisterTournament(tourney.id, title)}
                   onLongPress={() => handleDeleteTournament(tourney.id, title)}
                 >
@@ -564,9 +598,9 @@ export default function DashboardScreen({ navigation }) {
                         <Text style={{ color: '#8A95A5', fontSize: 9, letterSpacing: 0.5, marginBottom: 2 }}>{t('prize')?.toUpperCase()}</Text>
                         <Text style={styles.tournamentPrize}>{prize}</Text>
                       </View>
-                      <View style={[styles.registerBtn, { backgroundColor: isRegistered ? '#2D3748' : theme.bgColor }]}>
-                        <Text style={[styles.tournamentRegister, { color: isRegistered ? '#8A95A5' : theme.textColor }]}>
-                          {isRegistered ? 'REGISTERED' : t('register').toUpperCase()} {!isRegistered && <Feather name="arrow-right" size={12} />}
+                      <View style={[styles.registerBtn, { backgroundColor: (isRegistered || isFull) ? '#2D3748' : theme.bgColor }]}>
+                        <Text style={[styles.tournamentRegister, { color: (isRegistered || isFull) ? '#8A95A5' : theme.textColor }]}>
+                          {isRegistered ? 'REGISTERED' : (isFull ? 'SOLD OUT' : t('register').toUpperCase())} {!isRegistered && !isFull && <Feather name="arrow-right" size={12} />}
                         </Text>
                       </View>
                     </View>
@@ -686,8 +720,7 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 11, color: '#C2D0E8', fontWeight: '600' },
   
   avatarWrapper: {
-    shadowColor: '#D4FF00', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 8,
-  },
+    shadowColor: '#D4FF00', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 8 },
   inboxBtn: {
     padding: 8,
     borderRadius: 20,
@@ -703,7 +736,7 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#FF4B4B',
+    backgroundColor: '#D4FF00', // Green dot
     borderWidth: 2,
     borderColor: '#1C2433'
   },

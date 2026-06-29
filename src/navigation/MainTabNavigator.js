@@ -88,8 +88,8 @@ export default function MainTabNavigator() {
       tabBarPosition="bottom"
       screenOptions={({ route }) => ({
         headerShown: false,
-        swipeEnabled: true,
-        animationEnabled: true,
+        swipeEnabled: false,
+        animationEnabled: false,
         tabBarIcon: ({ color }) => {
           let iconName;
           if (route.name === 'Home') iconName = 'home';
@@ -104,13 +104,19 @@ export default function MainTabNavigator() {
         tabBarInactiveTintColor: '#8A95A5',
         tabBarShowIcon: true,
         tabBarIndicatorStyle: { height: 2, backgroundColor: '#D4FF00', top: 0 },
+        tabBarItemStyle: {
+          padding: 0,
+          margin: 0,
+          justifyContent: 'center',
+          alignItems: 'center'
+        },
         tabBarStyle: {
           backgroundColor: '#0F1522',
           borderTopWidth: 1,
           borderTopColor: '#1C2433',
-          paddingBottom: Math.max(insets.bottom, 5),
-          paddingTop: 5,
-          height: 60 + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, 8),
+          paddingTop: 8,
+          height: 60 + Math.max(insets.bottom, 10),
           elevation: 0,
         },
         tabBarLabel: (props) => <TabBarLabel route={route} color={props.color} />

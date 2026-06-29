@@ -248,12 +248,15 @@ export default function VenueMapScreen({ navigation, route }) {
   };
 
   const confirmSelection = () => {
-    const finalName = searchQuery.trim() !== '' ? searchQuery : 'Custom Location';
+    // Gunakan nama alamat asli dari reverse geocoding jika searchQuery kosong
+    const addressName = selectedAddress && selectedAddress !== 'Custom Location' ? selectedAddress.split(',')[0] : 'Titik Lokasi Pilihan';
+    const finalName = searchQuery.trim() !== '' ? searchQuery : addressName;
+    
     const venue = {
       id: `custom_${Date.now()}`,
       name: finalName,
-      distance: 'Custom distance',
-      type: 'Outdoor/Indoor',
+      distance: selectedAddress && selectedAddress !== 'Custom Location' ? selectedAddress : 'Sesuai titik koordinat GPS',
+      type: 'Custom Pin',
       status: 'AVAILABLE',
       latitude: currentRegion.latitude,
       longitude: currentRegion.longitude

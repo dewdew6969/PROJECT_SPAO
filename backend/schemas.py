@@ -90,9 +90,17 @@ class Challenge(ChallengeCreate):
     
     challenger: Optional['User'] = None
     opponent: Optional['User'] = None
-
     class Config:
         from_attributes = True
+
+class LeaderboardUser(BaseModel):
+    id: int
+    rank: int
+    username: str
+    full_name: Optional[str] = None
+    avatar: Optional[str] = None
+    elo: int
+    win_rate: str
 
 class ReportCreate(BaseModel):
     reported_id: int

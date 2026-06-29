@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import useAppStore from '../../store/useAppStore';
 import { useIsFocused } from '@react-navigation/native';
+import { Image } from 'expo-image';
 
 export default function ChatListScreen({ navigation }) {
   const { profile } = useAppStore();
@@ -33,6 +34,25 @@ export default function ChatListScreen({ navigation }) {
     } catch (e) {
       return cleanStr.startsWith('/') ? `${apiUrl}${cleanStr}` : `${apiUrl}/${cleanStr}`;
     }
+  };
+
+  const formatDate = (timestampStr) => {
+    if (!timestampStr) return '';
+    let date;
+    
+    if (timestampStr.includes('T')) {
+       date = new Date(timestampStr);
+    } else {
+       const [hours, minutes] = timestampStr.split(':');
+       date = new Date();
+       date.setUTCHours(parseInt(hours, 10));
+       date.setUTCMinutes(parseInt(minutes, 10));
+    }
+    
+    // Gunakan getHours() agar zona waktu lokal (misal WIB +7) terbaca dengan akurat di semua HP
+    const h = date.getHours().toString().padStart(2, '0');
+    const m = date.getMinutes().toString().padStart(2, '0');
+    return `${h}.${m}`;
   };
 
   const fetchChats = async () => {
@@ -90,8 +110,7 @@ export default function ChatListScreen({ navigation }) {
       // Hapus satu persatu berdasarkan opponent_id
       for (const opponentId of selectedChats) {
         await fetch(`${apiUrl}/chats/${profile.id}/${opponentId}`, {
-          method: 'DELETE',
-        });
+          method: 'DELETE' });
       }
       setSelectedChats([]);
     } catch (err) {
@@ -101,7 +120,7 @@ export default function ChatListScreen({ navigation }) {
     }
   };
 
-  const confirmDeleteChats = () => {
+  const confirmDelete = () => {
     Alert.alert(
       "Hapus Obrolan",
       `Apakah Anda yakin ingin menghapus seluruh pesan dengan ${selectedChats.length} pengguna ini?`,
@@ -143,7 +162,7 @@ export default function ChatListScreen({ navigation }) {
           <View style={styles.nameRow}>
             <Text style={styles.nameText} numberOfLines={1}>{opponent.name}</Text>
             <Text style={[styles.timeText, unread_count > 0 && styles.unreadTime]}>
-              {last_message.timestamp}
+              {formatDate(last_message.timestamp)}
             </Text>
           </View>
           
@@ -185,7 +204,7 @@ export default function ChatListScreen({ navigation }) {
                 {selectedChats.length}
               </Text>
             </View>
-            <TouchableOpacity onPress={confirmDeleteChats} style={{ padding: 5 }}>
+            <TouchableOpacity onPress={confirmDelete} style={{ padding: 5 }}>
               <Feather name="trash-2" size={20} color="#FF6B6B" />
             </TouchableOpacity>
           </View>

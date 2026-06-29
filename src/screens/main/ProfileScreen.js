@@ -8,16 +8,17 @@ import {
   TouchableOpacity, 
   Platform, 
   StatusBar, 
-  Image, 
   Modal, 
   TextInput,
   Alert,
   ActivityIndicator,
   RefreshControl
 } from 'react-native';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as ScreenCapture from 'expo-screen-capture';
 import * as Location from 'expo-location';
 import useAppStore from '../../store/useAppStore';
 import CustomAlert from '../../components/CustomAlert';
@@ -72,6 +73,29 @@ export default function ProfileScreen({ navigation }) {
   // Modals for Selection
   const [selectionModalVisible, setSelectionModalVisible] = useState(false);
   const [selectionType, setSelectionType] = useState(''); // 'primarySport', 'secondarySport', 'primaryLevel', 'secondaryLevel', 'days', 'time'
+
+  // Prevent screenshot when zoom modal is open
+  React.useEffect(() => {
+    let subscription;
+    const preventScreenshot = async () => {
+      if (zoomModalVisible) {
+        await ScreenCapture.preventScreenCaptureAsync();
+        subscription = ScreenCapture.addScreenshotListener(() => {
+          Alert.alert("Dilarang", "Tangkapan layar dinonaktifkan demi privasi.");
+        });
+      } else {
+        await ScreenCapture.allowScreenCaptureAsync();
+      }
+    };
+    preventScreenshot();
+
+    return () => {
+      ScreenCapture.allowScreenCaptureAsync();
+      if (subscription) {
+        subscription.remove();
+      }
+    };
+  }, [zoomModalVisible]);
   
   // Temp states for multi-select and complex selection
   const [tempDays, setTempDays] = useState([]);
@@ -620,7 +644,7 @@ export default function ProfileScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
               <View style={styles.zoomImageContainer}>
-                <ZoomableImage uri={profile.avatar} />
+                <ZoomableImage uri={getAvatarUrl(profile.avatar)} />
               </View>
             </View>
           </GestureHandlerRootView>
