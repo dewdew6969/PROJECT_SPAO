@@ -11,6 +11,12 @@
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.dewapermana.sparo",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDummyKeyHereToPreventStartupCrash"
+        }
+      },
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -38,8 +44,14 @@
       "@react-native-community/datetimepicker"
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
-    }
+      "typedRoutes": false,
+      "reactCompiler": false
+    },
+    "extra": {
+      "eas": {
+        "projectId": "0c0a6460-5979-4a4d-98f4-1cc3ba1db14f"
+      }
+    },
+    "owner": "dewapermana"
   }
 }
